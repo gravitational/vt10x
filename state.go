@@ -811,8 +811,8 @@ type TerminalState struct {
 	SavedCursorY    int
 }
 
-// State returns the terminal state needed to recreate it via ANSI sequences
-func (t *State) State() TerminalState {
+// DumpState returns the terminal state needed to recreate it via ANSI sequences
+func (t *State) DumpState() TerminalState {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
