@@ -789,6 +789,8 @@ func (t *State) String() string {
 	return string(view)
 }
 
+// TerminalState represents the state of the terminal, providing the necessary
+// information to recreate it via ANSI or other mechanisms.
 type TerminalState struct {
 	Cols            int
 	Rows            int
@@ -811,7 +813,7 @@ type TerminalState struct {
 	SavedCursorY    int
 }
 
-// DumpState returns the terminal state needed to recreate it via ANSI sequences
+// DumpState returns the terminal state
 func (t *State) DumpState() TerminalState {
 	t.mu.Lock()
 	defer t.mu.Unlock()
