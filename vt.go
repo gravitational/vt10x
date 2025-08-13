@@ -53,6 +53,9 @@ type View interface {
 
 	// Unlock resets change flags and unlocks the state object's mutex.
 	Unlock()
+
+	// State returns the current state of the terminal.
+	State() TerminalState
 }
 
 type TerminalOption func(*TerminalInfo)

@@ -760,3 +760,74 @@ func (t *State) String() string {
 
 	return string(view)
 }
+
+type TerminalState struct {
+	Cols            int
+	Rows            int
+	CursorX         int
+	CursorY         int
+	CursorVisible   bool
+	PrimaryBuffer   [][]Glyph
+	AlternateBuffer [][]Glyph
+	AltScreen       bool
+	ScrollTop       int
+	ScrollBottom    int
+	TabStops        []int
+	Wrap            bool
+	Insert          bool
+	Origin          bool
+	AutoWrap        bool
+	ReverseVideo    bool
+	Title           string
+	SavedCursorX    int
+	SavedCursorY    int
+}
+
+// State returns the terminal state needed to recreate it via ANSI sequences
+func (t *State) State() TerminalState {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	state := TerminalState{
+		Cols:          t.cols,
+		Rows:          t.rows,
+		CursorX:       t.cur.X,
+		CursorY:       t.cur.Y,
+		CursorVisible: t.mode&ModeHide == 0,
+		AltScreen:     t.mode&ModeAltScreen != 0,
+		ScrollTop:     t.top,
+		ScrollBottom:  t.bottom,
+		Title:         t.title,
+		SavedCursorX:  t.curSaved.X,
+		SavedCursorY:  t.curSaved.Y,
+		Wrap:          t.mode&ModeWrap != 0,
+		Insert:        t.mode&ModeInsert != 0,
+		Origin:        t.cur.State&cursorOrigin != 0,
+		AutoWrap:      t.mode&ModeWrap != 0, // Same as Wrap
+		ReverseVideo:  t.mode&ModeReverse != 0,
+	}
+
+	for i, isTab := range t.tabs {
+		if isTab {
+			state.TabStops = append(state.TabStops, i)
+		}
+	}
+
+	copyBuffer := func(src []line) [][]Glyph {
+		buf := make([][]Glyph, t.rows)
+		for y := 0; y < t.rows; y++ {
+			buf[y] = make([]Glyph, t.cols)
+			for x := 0; x < t.cols; x++ {
+				if y < len(src) && x < len(src[y]) {
+					buf[y][x] = src[y][x]
+				}
+			}
+		}
+		return buf
+	}
+
+	state.PrimaryBuffer = copyBuffer(t.lines)
+	state.AlternateBuffer = copyBuffer(t.altLines)
+
+	return state
+}
