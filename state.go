@@ -20,6 +20,34 @@ const (
 	attrWrap
 )
 
+func IsReverse(attr int16) bool {
+	return attr&attrReverse != 0
+}
+
+func IsUnderline(attr int16) bool {
+	return attr&attrUnderline != 0
+}
+
+func IsBold(attr int16) bool {
+	return attr&attrBold != 0
+}
+
+func IsGfx(attr int16) bool {
+	return attr&attrGfx != 0
+}
+
+func IsItalic(attr int16) bool {
+	return attr&attrItalic != 0
+}
+
+func IsBlink(attr int16) bool {
+	return attr&attrBlink != 0
+}
+
+func IsWrap(attr int16) bool {
+	return attr&attrWrap != 0
+}
+
 const (
 	cursorDefault = 1 << iota
 	cursorWrapNext
