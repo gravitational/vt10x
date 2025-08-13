@@ -20,30 +20,37 @@ const (
 	attrWrap
 )
 
+// IsReverse checks if the attribute contains reverse video mode.
 func IsReverse(attr int16) bool {
 	return attr&attrReverse != 0
 }
 
+// IsUnderline checks if the attribute contains underline mode.
 func IsUnderline(attr int16) bool {
 	return attr&attrUnderline != 0
 }
 
+// IsBold checks if the attribute contains bold mode.
 func IsBold(attr int16) bool {
 	return attr&attrBold != 0
 }
 
+// IsGfx checks if the attribute contains graphics mode.
 func IsGfx(attr int16) bool {
 	return attr&attrGfx != 0
 }
 
+// IsItalic checks if the attribute contains italic mode.
 func IsItalic(attr int16) bool {
 	return attr&attrItalic != 0
 }
 
+// IsBlink checks if the attribute contains blink mode.
 func IsBlink(attr int16) bool {
 	return attr&attrBlink != 0
 }
 
+// IsWrap checks if the attribute contains auto-wrap mode.
 func IsWrap(attr int16) bool {
 	return attr&attrWrap != 0
 }
