@@ -20,6 +20,41 @@ const (
 	attrWrap
 )
 
+// IsReverse checks if the attribute contains reverse video mode.
+func IsReverse(attr int16) bool {
+	return attr&attrReverse != 0
+}
+
+// IsUnderline checks if the attribute contains underline mode.
+func IsUnderline(attr int16) bool {
+	return attr&attrUnderline != 0
+}
+
+// IsBold checks if the attribute contains bold mode.
+func IsBold(attr int16) bool {
+	return attr&attrBold != 0
+}
+
+// IsGfx checks if the attribute contains graphics mode.
+func IsGfx(attr int16) bool {
+	return attr&attrGfx != 0
+}
+
+// IsItalic checks if the attribute contains italic mode.
+func IsItalic(attr int16) bool {
+	return attr&attrItalic != 0
+}
+
+// IsBlink checks if the attribute contains blink mode.
+func IsBlink(attr int16) bool {
+	return attr&attrBlink != 0
+}
+
+// IsWrap checks if the attribute contains auto-wrap mode.
+func IsWrap(attr int16) bool {
+	return attr&attrWrap != 0
+}
+
 const (
 	cursorDefault = 1 << iota
 	cursorWrapNext
@@ -759,4 +794,77 @@ func (t *State) String() string {
 	}
 
 	return string(view)
+}
+
+// TerminalState represents the state of the terminal, providing the necessary
+// information to recreate it via ANSI or other mechanisms.
+type TerminalState struct {
+	Cols            int
+	Rows            int
+	CursorX         int
+	CursorY         int
+	CursorVisible   bool
+	PrimaryBuffer   [][]Glyph
+	AlternateBuffer [][]Glyph
+	AltScreen       bool
+	ScrollTop       int
+	ScrollBottom    int
+	TabStops        []int
+	Wrap            bool
+	Insert          bool
+	Origin          bool
+	AutoWrap        bool
+	ReverseVideo    bool
+	Title           string
+	SavedCursorX    int
+	SavedCursorY    int
+}
+
+// DumpState returns the terminal state
+func (t *State) DumpState() TerminalState {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	state := TerminalState{
+		Cols:          t.cols,
+		Rows:          t.rows,
+		CursorX:       t.cur.X,
+		CursorY:       t.cur.Y,
+		CursorVisible: t.mode&ModeHide == 0,
+		AltScreen:     t.mode&ModeAltScreen != 0,
+		ScrollTop:     t.top,
+		ScrollBottom:  t.bottom,
+		Title:         t.title,
+		SavedCursorX:  t.curSaved.X,
+		SavedCursorY:  t.curSaved.Y,
+		Wrap:          t.mode&ModeWrap != 0,
+		Insert:        t.mode&ModeInsert != 0,
+		Origin:        t.cur.State&cursorOrigin != 0,
+		AutoWrap:      t.mode&ModeWrap != 0, // Same as Wrap
+		ReverseVideo:  t.mode&ModeReverse != 0,
+	}
+
+	for i, isTab := range t.tabs {
+		if isTab {
+			state.TabStops = append(state.TabStops, i)
+		}
+	}
+
+	copyBuffer := func(src []line) [][]Glyph {
+		buf := make([][]Glyph, t.rows)
+		for y := 0; y < t.rows; y++ {
+			buf[y] = make([]Glyph, t.cols)
+			for x := 0; x < t.cols; x++ {
+				if y < len(src) && x < len(src[y]) {
+					buf[y][x] = src[y][x]
+				}
+			}
+		}
+		return buf
+	}
+
+	state.PrimaryBuffer = copyBuffer(t.lines)
+	state.AlternateBuffer = copyBuffer(t.altLines)
+
+	return state
 }
