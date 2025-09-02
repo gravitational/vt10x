@@ -1,3 +1,4 @@
+//go:build plan9 || nacl || windows
 // +build plan9 nacl windows
 
 package vt10x
@@ -54,6 +55,39 @@ func (t *terminal) Write(p []byte) (int, error) {
 		t.put(c)
 	}
 	return written, nil
+}
+
+func (t *terminal) WriteWithChanges(p []byte) ([]int, error) {
+	var dirtyLines = make(map[int]bool)
+	var written int
+	r := bytes.NewReader(p)
+	t.lock()
+	defer t.unlock()
+	for {
+		c, sz, err := r.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+		written += sz
+		if c == unicode.ReplacementChar && sz == 1 {
+			if r.Len() == 0 {
+				// not enough bytes for a full rune
+				return nil, nil
+			}
+			t.logln("invalid utf8 sequence")
+			continue
+		}
+		t.put(c)
+		dirtyLines[t.cur.Y] = true
+	}
+	var lines []int
+	for l := range dirtyLines {
+		lines = append(lines, l)
+	}
+	return lines, nil
 }
 
 // TODO: add tests for expected blocking behavior

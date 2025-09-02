@@ -19,6 +19,8 @@ type Terminal interface {
 	// buffer empties. State is locked as soon as first rune is read, and unlocked
 	// when buffer is empty.
 	Parse(bf *bufio.Reader) error
+
+	WriteWithChanges(p []byte) ([]int, error)
 }
 
 // View represents the view of the virtual terminal emulator.

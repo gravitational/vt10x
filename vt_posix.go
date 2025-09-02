@@ -1,3 +1,4 @@
+//go:build linux || darwin || dragonfly || solaris || openbsd || netbsd || freebsd
 // +build linux darwin dragonfly solaris openbsd netbsd freebsd
 
 package vt10x
@@ -55,6 +56,68 @@ func (t *terminal) Write(p []byte) (int, error) {
 		t.put(c)
 	}
 	return written, nil
+}
+
+func (t *terminal) WriteWithChanges(p []byte) ([]int, error) {
+	var dirtyLines = make(map[int]bool)
+	r := bytes.NewReader(p)
+	t.lock()
+
+	prevRow := t.cur.Y
+
+	defer t.unlock()
+	for {
+		c, sz, err := r.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return uniqueSorted(dirtyLines), err
+		}
+		if c == unicode.ReplacementChar && sz == 1 {
+			if r.Len() == 0 {
+				return uniqueSorted(dirtyLines), nil
+			}
+			t.logln("invalid utf8 sequence")
+			continue
+		}
+
+		beforeRow := t.cur.Y
+		t.put(c)
+		afterRow := t.cur.Y
+
+		dirtyLines[beforeRow] = true
+		if afterRow != beforeRow {
+			dirtyLines[afterRow] = true
+		}
+
+		if t.cur.Y != prevRow {
+			prevRow = t.cur.Y
+		}
+	}
+
+	return uniqueSorted(dirtyLines), nil
+}
+
+func uniqueSorted(m map[int]bool) []int {
+	lines := make([]int, 0, len(m))
+	for line := range m {
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		return lines
+	}
+
+	for i := 1; i < len(lines); i++ {
+		key := lines[i]
+		j := i - 1
+		for j >= 0 && lines[j] > key {
+			lines[j+1] = lines[j]
+			j--
+		}
+		lines[j+1] = key
+	}
+	return lines
 }
 
 // TODO: add tests for expected blocking behavior
