@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"slices"
 	"unicode"
 	"unicode/utf8"
 )
@@ -55,6 +56,61 @@ func (t *terminal) Write(p []byte) (int, error) {
 		t.put(c)
 	}
 	return written, nil
+}
+
+// WriteWithChanges writes to the terminal state and returns the line numbers that changed.
+func (t *terminal) WriteWithChanges(p []byte) ([]int, error) {
+	var dirtyLines = make(map[int]bool)
+	r := bytes.NewReader(p)
+	t.lock()
+
+	prevRow := t.cur.Y
+
+	defer t.unlock()
+	for {
+		c, sz, err := r.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return uniqueSorted(dirtyLines), err
+		}
+		if c == unicode.ReplacementChar && sz == 1 {
+			if r.Len() == 0 {
+				return uniqueSorted(dirtyLines), nil
+			}
+			t.logln("invalid utf8 sequence")
+			continue
+		}
+
+		beforeRow := t.cur.Y
+		t.put(c)
+		afterRow := t.cur.Y
+
+		dirtyLines[beforeRow] = true
+		if afterRow != beforeRow {
+			dirtyLines[afterRow] = true
+		}
+
+		if t.cur.Y != prevRow {
+			prevRow = t.cur.Y
+		}
+	}
+
+	return uniqueSorted(dirtyLines), nil
+}
+
+func uniqueSorted(m map[int]bool) []int {
+	lines := make([]int, 0, len(m))
+	for line := range m {
+		lines = append(lines, line)
+	}
+	if len(lines) == 0 {
+		return lines
+	}
+
+	slices.Sort(lines)
+	return lines
 }
 
 // TODO: add tests for expected blocking behavior

@@ -56,6 +56,36 @@ func (t *terminal) Write(p []byte) (int, error) {
 	return written, nil
 }
 
+// WriteWithChanges writes to the terminal state and returns the line numbers that changed.
+func (t *terminal) WriteWithChanges(p []byte) ([]int, error) {
+	var dirtyLines = make(map[int]bool)
+	var written int
+	r := bytes.NewReader(p)
+	t.lock()
+	defer t.unlock()
+	for {
+		c, sz, err := r.ReadRune()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+		written += sz
+		if c == unicode.ReplacementChar && sz == 1 {
+			if r.Len() == 0 {
+				// not enough bytes for a full rune
+				return nil, nil
+			}
+			t.logln("invalid utf8 sequence")
+			continue
+		}
+		t.put(c)
+		dirtyLines[t.cur.Y] = true
+	}
+	return uniqueSorted(dirtyLines), nil
+}
+
 // TODO: add tests for expected blocking behavior
 func (t *terminal) Parse(br *bufio.Reader) error {
 	var locked bool
