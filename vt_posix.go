@@ -57,6 +57,7 @@ func (t *terminal) Write(p []byte) (int, error) {
 	return written, nil
 }
 
+// WriteWithChanges writes to the terminal state and returns the line numbers that changed.
 func (t *terminal) WriteWithChanges(p []byte) ([]int, error) {
 	var dirtyLines = make(map[int]bool)
 	r := bytes.NewReader(p)
