@@ -83,11 +83,7 @@ func (t *terminal) WriteWithChanges(p []byte) ([]int, error) {
 		t.put(c)
 		dirtyLines[t.cur.Y] = true
 	}
-	var lines []int
-	for l := range dirtyLines {
-		lines = append(lines, l)
-	}
-	return lines, nil
+	return uniqueSorted(dirtyLines), nil
 }
 
 // TODO: add tests for expected blocking behavior
