@@ -6,6 +6,7 @@ import (
 	"bufio"
 	"bytes"
 	"io"
+	"slices"
 	"unicode"
 	"unicode/utf8"
 )
@@ -108,15 +109,7 @@ func uniqueSorted(m map[int]bool) []int {
 		return lines
 	}
 
-	for i := 1; i < len(lines); i++ {
-		key := lines[i]
-		j := i - 1
-		for j >= 0 && lines[j] > key {
-			lines[j+1] = lines[j]
-			j--
-		}
-		lines[j+1] = key
-	}
+	slices.Sort(lines)
 	return lines
 }
 
