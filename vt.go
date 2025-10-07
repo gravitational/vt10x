@@ -20,6 +20,7 @@ type Terminal interface {
 	// when buffer is empty.
 	Parse(bf *bufio.Reader) error
 
+	// WriteWithChanges writes terminal changes to state and returns the line numbers that changed.
 	WriteWithChanges(p []byte) ([]int, error)
 }
 
