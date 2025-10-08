@@ -1,3 +1,3 @@
 module github.com/hinshun/vt10x
 
-go 1.14
+go 1.25
