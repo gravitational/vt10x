@@ -852,14 +852,16 @@ func (t *State) DumpState() TerminalState {
 
 	copyBuffer := func(src []line) [][]Glyph {
 		buf := make([][]Glyph, t.rows)
+		flat := make([]Glyph, t.rows*t.cols)
+
 		for y := 0; y < t.rows; y++ {
-			buf[y] = make([]Glyph, t.cols)
-			for x := 0; x < t.cols; x++ {
-				if y < len(src) && x < len(src[y]) {
-					buf[y][x] = src[y][x]
-				}
+			row := flat[y*t.cols : (y+1)*t.cols]
+			buf[y] = row
+			if y < len(src) {
+				copy(row, src[y])
 			}
 		}
+
 		return buf
 	}
 
