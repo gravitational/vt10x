@@ -363,6 +363,7 @@ func BenchmarkCopyBufferFlat(b *testing.B) {
 		return buf
 	}
 
+	b.ResetTimer()
 	for b.Loop() {
 		_ = copyBuffer(src)
 	}
