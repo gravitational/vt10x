@@ -8,6 +8,10 @@ import (
 
 const (
 	tabspaces = 8
+
+	// maxResizeDim caps resize dimensions so a pathological session recording can't OOM the host by requesting a
+	// terabyte-sized terminal.
+	maxResizeDim = 2048
 )
 
 const (
@@ -178,7 +182,11 @@ func (t *State) Unlock() {
 
 // Cell returns the glyph containing the character code, foreground color, and
 // background color at position (x, y) relative to the top left of the terminal.
+// Out-of-range coordinates return a zero Glyph rather than panicking.
 func (t *State) Cell(x, y int) Glyph {
+	if y < 0 || y >= len(t.lines) || x < 0 || x >= len(t.lines[y]) {
+		return Glyph{}
+	}
 	cell := t.lines[y][x]
 	fg, ok := t.colorOverride[cell.FG]
 	if ok {
@@ -331,7 +339,11 @@ func (t *State) reset() {
 	t.top = 0
 	t.bottom = t.rows - 1
 	t.mode = ModeWrap
-	t.clear(0, 0, t.rows-1, t.cols-1)
+	// Skip clear on an uninitialized (0x0) terminal: clear would compute a
+	// negative y range (rows-1 == -1) and then try to write to t.dirty[-1].
+	if t.cols > 0 && t.rows > 0 {
+		t.clear(0, 0, t.rows-1, t.cols-1)
+	}
 	t.moveTo(0, 0)
 }
 
@@ -340,7 +352,7 @@ func (t *State) resize(cols, rows int) bool {
 	if cols == t.cols && rows == t.rows {
 		return false
 	}
-	if cols < 1 || rows < 1 {
+	if !between(cols, 1, maxResizeDim) || !between(rows, 1, maxResizeDim) {
 		return false
 	}
 	slide := t.cur.Y - rows + 1
@@ -728,6 +740,8 @@ func (t *State) setAttr(attr []int) {
 }
 
 func (t *State) insertBlanks(n int) {
+	// Clamp: CSI args are untrusted; prevent negative or overflowing slice bounds below.
+	n = clamp(n, 0, t.cols-t.cur.X)
 	src := t.cur.X
 	dst := src + n
 	size := t.cols - dst
@@ -757,6 +771,8 @@ func (t *State) deleteLines(n int) {
 }
 
 func (t *State) deleteChars(n int) {
+	// Clamp: CSI args are untrusted; prevent negative or overflowing slice bounds below.
+	n = clamp(n, 0, t.cols-t.cur.X)
 	src := t.cur.X + n
 	dst := t.cur.X
 	size := t.cols - src
