@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  vet:
+    name: go vet
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - run: go vet ./...
+
+  test:
+    name: go test -race
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - run: go test -race -timeout 5m ./...
+
+  fuzz:
+    name: FuzzWrite smoke (30s)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+
+      - name: Run fuzz smoke
+        run: go test -run=^$ -fuzz=FuzzWrite -fuzztime=30s
+
+      - name: Upload fuzz failure corpus
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-failure-corpus
+          path: testdata/fuzz/**
+          if-no-files-found: ignore
