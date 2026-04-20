@@ -1,3 +1,4 @@
+//go:build plan9 || nacl || windows
 // +build plan9 nacl windows
 
 package vt10x
@@ -29,7 +30,11 @@ func (t *terminal) init(cols, rows int) {
 	t.reset()
 }
 
-func (t *terminal) Write(p []byte) (int, error) {
+// Write parses input and writes terminal changes to state.
+// Panics from malformed input are recovered and returned as an error; mutex state unwinds safely because every lock uses defer.
+func (t *terminal) Write(p []byte) (n int, err error) {
+	defer recoverTo(&err)
+
 	var written int
 	r := bytes.NewReader(p)
 	t.lock()
@@ -57,7 +62,9 @@ func (t *terminal) Write(p []byte) (int, error) {
 }
 
 // WriteWithChanges writes to the terminal state and returns the line numbers that changed.
-func (t *terminal) WriteWithChanges(p []byte) ([]int, error) {
+func (t *terminal) WriteWithChanges(p []byte) (lines []int, err error) {
+	defer recoverTo(&err)
+
 	var dirtyLines = make(map[int]bool)
 	var written int
 	r := bytes.NewReader(p)
@@ -87,7 +94,9 @@ func (t *terminal) WriteWithChanges(p []byte) ([]int, error) {
 }
 
 // TODO: add tests for expected blocking behavior
-func (t *terminal) Parse(br *bufio.Reader) error {
+func (t *terminal) Parse(br *bufio.Reader) (err error) {
+	defer recoverTo(&err)
+
 	var locked bool
 	defer func() {
 		if locked {

@@ -8,6 +8,10 @@ import (
 
 const (
 	tabspaces = 8
+
+	// maxResizeDim caps resize dimensions so a pathological session recording can't OOM the host by requesting a
+	// terabyte-sized terminal.
+	maxResizeDim = 2048
 )
 
 const (
@@ -139,6 +143,9 @@ type State struct {
 }
 
 func newState(w io.Writer) *State {
+	if w == nil {
+		w = io.Discard
+	}
 	return &State{
 		w:             w,
 		colorOverride: make(map[Color]Color),
@@ -178,7 +185,11 @@ func (t *State) Unlock() {
 
 // Cell returns the glyph containing the character code, foreground color, and
 // background color at position (x, y) relative to the top left of the terminal.
+// Out-of-range coordinates return a zero Glyph rather than panicking.
 func (t *State) Cell(x, y int) Glyph {
+	if y < 0 || y >= len(t.lines) || x < 0 || x >= len(t.lines[y]) {
+		return Glyph{}
+	}
 	cell := t.lines[y][x]
 	fg, ok := t.colorOverride[cell.FG]
 	if ok {
@@ -242,10 +253,16 @@ func (t *State) restoreCursor() {
 }
 
 func (t *State) put(c rune) {
+	if t.state == nil {
+		return
+	}
 	t.state(c)
 }
 
 func (t *State) putTab(forward bool) {
+	if t.cols <= 0 || len(t.tabs) == 0 {
+		return
+	}
 	x := t.cur.X
 	if forward {
 		if x == t.cols {
@@ -293,6 +310,9 @@ var gfxCharTable = [62]rune{
 }
 
 func (t *State) setChar(c rune, attr *Glyph, x, y int) {
+	if attr == nil || y < 0 || y >= len(t.lines) || x < 0 || y >= len(t.dirty) || x >= len(t.lines[y]) {
+		return
+	}
 	if attr.Mode&attrGfx != 0 {
 		if c >= 0x41 && c <= 0x7e && gfxCharTable[c-0x41] != 0 {
 			c = gfxCharTable[c-0x41]
@@ -302,7 +322,7 @@ func (t *State) setChar(c rune, attr *Glyph, x, y int) {
 	t.dirty[y] = true
 	t.lines[y][x] = *attr
 	t.lines[y][x].Char = c
-	//if t.options.BrightBold && attr.Mode&attrBold != 0 && attr.FG < 8 {
+	// if t.options.BrightBold && attr.Mode&attrBold != 0 && attr.FG < 8 {
 	if attr.Mode&attrBold != 0 && attr.FG < 8 {
 		t.lines[y][x].FG = attr.FG + 8
 	}
@@ -331,7 +351,11 @@ func (t *State) reset() {
 	t.top = 0
 	t.bottom = t.rows - 1
 	t.mode = ModeWrap
-	t.clear(0, 0, t.rows-1, t.cols-1)
+	// Skip clear on an uninitialized (0x0) terminal: clear would compute a
+	// negative y range (rows-1 == -1) and then try to write to t.dirty[-1].
+	if t.cols > 0 && t.rows > 0 {
+		t.clear(0, 0, t.rows-1, t.cols-1)
+	}
 	t.moveTo(0, 0)
 }
 
@@ -340,7 +364,7 @@ func (t *State) resize(cols, rows int) bool {
 	if cols == t.cols && rows == t.rows {
 		return false
 	}
-	if cols < 1 || rows < 1 {
+	if !between(cols, 1, maxResizeDim) || !between(rows, 1, maxResizeDim) {
 		return false
 	}
 	slide := t.cur.Y - rows + 1
@@ -395,6 +419,9 @@ func (t *State) resize(cols, rows int) bool {
 }
 
 func (t *State) clear(x0, y0, x1, y1 int) {
+	if t.cols <= 0 || t.rows <= 0 || len(t.lines) == 0 || len(t.dirty) == 0 {
+		return
+	}
 	if x0 > x1 {
 		x0, x1 = x1, x0
 	}
@@ -427,6 +454,13 @@ func (t *State) moveAbsTo(x, y int) {
 }
 
 func (t *State) moveTo(x, y int) {
+	if t.cols <= 0 || t.rows <= 0 {
+		t.changed |= ChangedScreen
+		t.cur.State &^= cursorWrapNext
+		t.cur.X = 0
+		t.cur.Y = 0
+		return
+	}
 	var miny, maxy int
 	if t.cur.State&cursorOrigin != 0 {
 		miny = t.top
@@ -451,12 +485,20 @@ func (t *State) swapScreen() {
 
 func (t *State) dirtyAll() {
 	t.changed |= ChangedScreen
+	if len(t.dirty) == 0 {
+		return
+	}
 	for y := 0; y < t.rows; y++ {
 		t.dirty[y] = true
 	}
 }
 
 func (t *State) setScroll(top, bottom int) {
+	if t.rows <= 0 {
+		t.top = 0
+		t.bottom = 0
+		return
+	}
 	top = clamp(top, 0, t.rows-1)
 	bottom = clamp(bottom, 0, t.rows-1)
 	if top > bottom {
@@ -497,7 +539,13 @@ func between(val, min, max int) bool {
 }
 
 func (t *State) scrollDown(orig, n int) {
+	if t.rows <= 0 || t.cols <= 0 || len(t.lines) == 0 || len(t.dirty) == 0 || n <= 0 {
+		return
+	}
 	n = clamp(n, 0, t.bottom-orig+1)
+	if n == 0 {
+		return
+	}
 	t.clear(0, t.bottom-n+1, t.cols-1, t.bottom)
 	t.changed |= ChangedScreen
 	for i := t.bottom; i >= orig+n; i-- {
@@ -510,7 +558,13 @@ func (t *State) scrollDown(orig, n int) {
 }
 
 func (t *State) scrollUp(orig, n int) {
+	if t.rows <= 0 || t.cols <= 0 || len(t.lines) == 0 || len(t.dirty) == 0 || n <= 0 {
+		return
+	}
 	n = clamp(n, 0, t.bottom-orig+1)
+	if n == 0 {
+		return
+	}
 	t.clear(0, orig, t.cols-1, orig+n-1)
 	t.changed |= ChangedScreen
 	for i := orig; i <= t.bottom-n; i++ {
@@ -728,6 +782,11 @@ func (t *State) setAttr(attr []int) {
 }
 
 func (t *State) insertBlanks(n int) {
+	if t.cols <= 0 || t.rows <= 0 || t.cur.Y < 0 || t.cur.Y >= len(t.lines) || t.cur.Y >= len(t.dirty) {
+		return
+	}
+	// Clamp: CSI args are untrusted; prevent negative or overflowing slice bounds below.
+	n = clamp(n, 0, t.cols-t.cur.X)
 	src := t.cur.X
 	dst := src + n
 	size := t.cols - dst
@@ -757,6 +816,11 @@ func (t *State) deleteLines(n int) {
 }
 
 func (t *State) deleteChars(n int) {
+	if t.cols <= 0 || t.rows <= 0 || t.cur.Y < 0 || t.cur.Y >= len(t.lines) || t.cur.Y >= len(t.dirty) {
+		return
+	}
+	// Clamp: CSI args are untrusted; prevent negative or overflowing slice bounds below.
+	n = clamp(n, 0, t.cols-t.cur.X)
 	src := t.cur.X + n
 	dst := t.cur.X
 	size := t.cols - src

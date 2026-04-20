@@ -70,6 +70,9 @@ type TerminalInfo struct {
 
 func WithWriter(w io.Writer) TerminalOption {
 	return func(info *TerminalInfo) {
+		if w == nil {
+			return
+		}
 		info.w = w
 	}
 }

@@ -32,6 +32,12 @@ func (c *csiEscape) put(b byte) bool {
 }
 
 func (c *csiEscape) parse() {
+	if len(c.buf) == 0 {
+		c.mode = 0
+		c.args = c.args[:0]
+		c.priv = false
+		return
+	}
 	c.mode = c.buf[len(c.buf)-1]
 	if len(c.buf) == 1 {
 		return
@@ -41,6 +47,9 @@ func (c *csiEscape) parse() {
 	if s[0] == '?' {
 		c.priv = true
 		s = s[1:]
+	}
+	if len(s) == 0 {
+		return
 	}
 	s = s[:len(s)-1]
 	ss := strings.Split(s, ";")
@@ -74,26 +83,28 @@ func (t *State) handleCSI() {
 	case '@': // ICH - insert <n> blank char
 		t.insertBlanks(c.arg(0, 1))
 	case 'A': // CUU - cursor <n> up
-		t.moveTo(t.cur.X, t.cur.Y-c.maxarg(0, 1))
+		t.moveTo(t.cur.X, t.cur.Y-clamp(c.maxarg(0, 1), 1, t.rows))
 	case 'B', 'e': // CUD, VPR - cursor <n> down
-		t.moveTo(t.cur.X, t.cur.Y+c.maxarg(0, 1))
+		t.moveTo(t.cur.X, t.cur.Y+clamp(c.maxarg(0, 1), 1, t.rows))
 	case 'c': // DA - device attributes
 		if c.arg(0, 0) == 0 {
 			// TODO: write vt102 id
 		}
 	case 'C', 'a': // CUF, HPR - cursor <n> forward
-		t.moveTo(t.cur.X+c.maxarg(0, 1), t.cur.Y)
+		t.moveTo(t.cur.X+clamp(c.maxarg(0, 1), 1, t.cols), t.cur.Y)
 	case 'D': // CUB - cursor <n> backward
-		t.moveTo(t.cur.X-c.maxarg(0, 1), t.cur.Y)
+		t.moveTo(t.cur.X-clamp(c.maxarg(0, 1), 1, t.cols), t.cur.Y)
 	case 'E': // CNL - cursor <n> down and first col
-		t.moveTo(0, t.cur.Y+c.arg(0, 1))
+		t.moveTo(0, t.cur.Y+clamp(c.arg(0, 1), 0, t.rows))
 	case 'F': // CPL - cursor <n> up and first col
-		t.moveTo(0, t.cur.Y-c.arg(0, 1))
+		t.moveTo(0, t.cur.Y-clamp(c.arg(0, 1), 0, t.rows))
 	case 'g': // TBC - tabulation clear
 		switch c.arg(0, 0) {
 		// clear current tab stop
 		case 0:
-			t.tabs[t.cur.X] = false
+			if t.cur.X >= 0 && t.cur.X < len(t.tabs) {
+				t.tabs[t.cur.X] = false
+			}
 		// clear all tabs
 		case 3:
 			for i := range t.tabs {
@@ -107,7 +118,8 @@ func (t *State) handleCSI() {
 	case 'H', 'f': // CUP, HVP - move to <row> <col>
 		t.moveAbsTo(c.arg(1, 1)-1, c.arg(0, 1)-1)
 	case 'I': // CHT - cursor forward tabulation <n> tab stops
-		n := c.arg(0, 1)
+		// Clamp to cols: putTab stops at the margin, so more iterations are wasted work and would hang on INT_MAX.
+		n := clamp(c.arg(0, 1), 0, t.cols)
 		for i := 0; i < n; i++ {
 			t.putTab(true)
 		}
@@ -149,21 +161,26 @@ func (t *State) handleCSI() {
 	case 'M': // DL - delete <n> lines
 		t.deleteLines(c.arg(0, 1))
 	case 'X': // ECH - erase <n> chars
-		t.clear(t.cur.X, t.cur.Y, t.cur.X+c.arg(0, 1)-1, t.cur.Y)
+		n := clamp(c.arg(0, 1), 1, t.cols-t.cur.X)
+		t.clear(t.cur.X, t.cur.Y, t.cur.X+n-1, t.cur.Y)
 	case 'P': // DCH - delete <n> chars
 		t.deleteChars(c.arg(0, 1))
 	case 'Z': // CBT - cursor backward tabulation <n> tab stops
-		n := c.arg(0, 1)
+		// Clamp: see CHT above.
+		n := clamp(c.arg(0, 1), 0, t.cols)
 		for i := 0; i < n; i++ {
 			t.putTab(false)
 		}
 	case 'd': // VPA - move to <row>
-		t.moveAbsTo(t.cur.X, c.arg(0, 1)-1)
+		t.moveAbsTo(t.cur.X, max(c.arg(0, 1), 1)-1)
 	case 'h': // SM - set terminal mode
 		t.setMode(c.priv, true, c.args)
 	case 'm': // SGR - terminal attribute (color)
 		t.setAttr(c.args)
 	case 'n':
+		if t.w == nil {
+			break
+		}
 		switch c.arg(0, 0) {
 		case 5: // DSR - device status report
 			t.w.Write([]byte("\033[0n"))
