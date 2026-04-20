@@ -3,9 +3,48 @@ package vt10x
 import (
 	"fmt"
 	"math"
+	"strings"
 	"testing"
 	"time"
 )
+
+func TestWriteRecoversPanicFromAnswerbackWriter(t *testing.T) {
+	const msg = "writer boom"
+	vt := New(WithWriter(panickingWriter{msg: msg}))
+	vt.Resize(80, 24)
+
+	// CSI 6n (device status report) makes vt10x write the cursor position back through its configured writer.
+	_, err := vt.Write([]byte("\x1b[6n"))
+	if err == nil {
+		t.Fatalf("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), msg) {
+		t.Fatalf("error missing panic value: %v", err)
+	}
+	if !strings.Contains(err.Error(), "recovered panic") {
+		t.Fatalf("error missing prefix: %v", err)
+	}
+}
+
+func TestRecoverTo(t *testing.T) {
+	var err error
+	func() {
+		defer recoverTo(&err)
+		panic("kaboom")
+	}()
+	if err == nil {
+		t.Fatalf("expected non-nil error")
+	}
+	if !strings.Contains(err.Error(), "kaboom") {
+		t.Fatalf("error missing panic value: %v", err)
+	}
+	if !strings.Contains(err.Error(), "recovered panic") {
+		t.Fatalf("error missing prefix: %v", err)
+	}
+	if !strings.Contains(err.Error(), "goroutine") {
+		t.Fatalf("error missing stack trace: %v", err)
+	}
+}
 
 // TestNewZeroSizeNoPanic ensures constructing a terminal with a zero size does not panic. resize(0,0) is a no-op so the
 // internal state stays at cols=0/rows=0; reset() must tolerate that.
@@ -110,3 +149,7 @@ func FuzzWrite(f *testing.F) {
 		}
 	})
 }
+
+type panickingWriter struct{ msg string }
+
+func (p panickingWriter) Write([]byte) (int, error) { panic(p.msg) }
