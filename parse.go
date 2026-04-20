@@ -13,7 +13,7 @@ func (t *State) parse(c rune) {
 	}
 	// TODO: update selection; see st.c:2450
 
-	if t.mode&ModeWrap != 0 && t.cur.State&cursorWrapNext != 0 {
+	if t.mode&ModeWrap != 0 && t.cur.State&cursorWrapNext != 0 && t.cur.Y >= 0 && t.cur.Y < len(t.lines) && t.cur.X >= 0 && t.cur.X < len(t.lines[t.cur.Y]) {
 		t.lines[t.cur.Y][t.cur.X].Mode |= attrWrap
 		t.newline(true)
 	}
@@ -64,7 +64,9 @@ func (t *State) parseEsc(c rune) {
 	case 'E': // NEL - next line
 		t.newline(true)
 	case 'H': // HTS - horizontal tab stop
-		t.tabs[t.cur.X] = true
+		if t.cur.X >= 0 && t.cur.X < len(t.tabs) {
+			t.tabs[t.cur.X] = true
+		}
 	case 'M': // RI - reverse index
 		if t.cur.Y == t.top {
 			t.scrollDown(t.top, 1)
@@ -92,6 +94,9 @@ func (t *State) parseEsc(c rune) {
 
 func (t *State) parseEscCSI(c rune) {
 	if t.handleControlCodes(c) {
+		return
+	}
+	if c > 0x7F {
 		return
 	}
 	t.logf("%q", string(c))

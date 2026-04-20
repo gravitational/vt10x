@@ -75,11 +75,11 @@ func (t *State) handleSTR() {
 			}
 
 			c := s.argString(1, "")
-			p := &c
-			if p != nil && *p == "?" {
+
+			if c == "?" {
 				t.oscColorResponse(int(DefaultFG), 10)
-			} else if err := t.setColorName(int(DefaultFG), p); err != nil {
-				t.logf("invalid foreground color: %s\n", maybe(p))
+			} else if err := t.setColorName(int(DefaultFG), &c); err != nil {
+				t.logf("invalid foreground color: %s\n", maybe(&c))
 			} else {
 				// TODO: redraw
 			}
@@ -89,11 +89,10 @@ func (t *State) handleSTR() {
 			}
 
 			c := s.argString(1, "")
-			p := &c
-			if p != nil && *p == "?" {
+			if c == "?" {
 				t.oscColorResponse(int(DefaultBG), 11)
-			} else if err := t.setColorName(int(DefaultBG), p); err != nil {
-				t.logf("invalid cursor color: %s\n", maybe(p))
+			} else if err := t.setColorName(int(DefaultBG), &c); err != nil {
+				t.logf("invalid cursor color: %s\n", maybe(&c))
 			} else {
 				// TODO: redraw
 			}
@@ -157,6 +156,9 @@ func (t *State) setColorName(j int, p *string) error {
 	if !between(j, 0, 1<<24) {
 		return fmt.Errorf("invalid color value %d", j)
 	}
+	if t.colorOverride == nil {
+		t.colorOverride = make(map[Color]Color)
+	}
 
 	if p == nil {
 		// restore color
@@ -174,6 +176,9 @@ func (t *State) setColorName(j int, p *string) error {
 }
 
 func (t *State) oscColorResponse(j, num int) {
+	if t.w == nil {
+		return
+	}
 	if j < 0 {
 		t.logf("failed to fetch osc color %d\n", j)
 		return
@@ -189,6 +194,9 @@ func (t *State) oscColorResponse(j, num int) {
 }
 
 func (t *State) osc4ColorResponse(j int) {
+	if t.w == nil {
+		return
+	}
 	if j < 0 {
 		t.logf("failed to fetch osc4 color %d\n", j)
 		return
