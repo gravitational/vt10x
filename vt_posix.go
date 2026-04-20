@@ -31,9 +31,7 @@ func (t *terminal) init(cols, rows int) {
 }
 
 // Write parses input and writes terminal changes to state.
-// Panics from malformed input are recovered and returned as an error; mutex state unwinds safely because every lock uses defer.
-func (t *terminal) Write(p []byte) (n int, err error) {
-	defer recoverTo(&err)
+func (t *terminal) Write(p []byte) (int, error) {
 	var written int
 	r := bytes.NewReader(p)
 	t.lock()
@@ -61,8 +59,7 @@ func (t *terminal) Write(p []byte) (n int, err error) {
 }
 
 // WriteWithChanges writes to the terminal state and returns the line numbers that changed.
-func (t *terminal) WriteWithChanges(p []byte) (lines []int, err error) {
-	defer recoverTo(&err)
+func (t *terminal) WriteWithChanges(p []byte) ([]int, error) {
 	var dirtyLines = make(map[int]bool)
 	r := bytes.NewReader(p)
 	t.lock()
@@ -117,8 +114,7 @@ func uniqueSorted(m map[int]bool) []int {
 }
 
 // TODO: add tests for expected blocking behavior
-func (t *terminal) Parse(br *bufio.Reader) (err error) {
-	defer recoverTo(&err)
+func (t *terminal) Parse(br *bufio.Reader) error {
 	var locked bool
 	defer func() {
 		if locked {
