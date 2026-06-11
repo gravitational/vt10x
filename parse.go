@@ -57,7 +57,7 @@ func (t *State) parseEsc(c rune) {
 		'+': // set quaternary charset G3 (ignored)
 	case 'D': // IND - linefeed
 		if t.cur.Y == t.bottom {
-			t.scrollUp(t.top, 1)
+			t.scrollUp(t.top, 1, true)
 		} else {
 			t.moveTo(t.cur.X, t.cur.Y+1)
 		}

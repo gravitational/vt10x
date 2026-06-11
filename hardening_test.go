@@ -102,7 +102,7 @@ func TestZeroStateMutationHelpersNoPanic(t *testing.T) {
 		{"putTab", func() { s.putTab(true) }},
 		{"clear", func() { s.clear(0, 0, 1, 1) }},
 		{"moveTo", func() { s.moveTo(10, 10) }},
-		{"scrollUp", func() { s.scrollUp(0, 1) }},
+		{"scrollUp", func() { s.scrollUp(0, 1, true) }},
 		{"scrollDown", func() { s.scrollDown(0, 1) }},
 		{"insertBlanks", func() { s.insertBlanks(1) }},
 		{"deleteChars", func() { s.deleteChars(1) }},
@@ -263,6 +263,8 @@ func FuzzWrite(f *testing.F) {
 		"abc\x1b[31mred\x1b[0m\x1b[2J\x1b[H",
 		// Tab stops + resize sequences.
 		"\x1bH\x1b[8;24;80t",
+		// Scroll region + oversized scroll, exercising scrollback capture clamping.
+		"\x1b[2;4r\x1b[99S",
 	}
 
 	for _, s := range seeds {
@@ -270,7 +272,7 @@ func FuzzWrite(f *testing.F) {
 	}
 
 	f.Fuzz(func(t *testing.T, data []byte) {
-		vt := New(WithSize(80, 24))
+		vt := New(WithSize(80, 24), WithScrollbackCapture(32))
 		done := make(chan struct{})
 
 		go func() {
