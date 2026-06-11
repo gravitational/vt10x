@@ -171,7 +171,10 @@ func (t *State) captureScrollback(lines []line, n int) {
 		return
 	}
 
-	for y := 0; y < n && y < len(lines); y++ {
+	// Rows past the end of the buffer neither exist to capture nor count as dropped.
+	n = min(n, len(lines))
+
+	for y := 0; y < n; y++ {
 		if len(t.scrollback) >= t.scrollbackLimit {
 			t.scrollbackDropped += n - y
 			return
@@ -703,7 +706,7 @@ func (t *State) setMode(priv bool, set bool, args []int) {
 				if alt {
 					t.clear(0, 0, t.cols-1, t.rows-1)
 				}
-				if !set || !alt {
+				if set != alt {
 					t.swapScreen()
 				}
 				if a != 1049 {

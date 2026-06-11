@@ -259,6 +259,29 @@ func TestScrollbackNotCapturedOnAltScreen(t *testing.T) {
 	}
 }
 
+func TestScrollbackSurvivesRedundantAltScreenReset(t *testing.T) {
+	term := New(WithSize(10, 3), WithScrollbackCapture(10))
+
+	writeLines(t, term, "l0")
+
+	// A defensive CSI ?1049l while already on the primary screen must be a no-op, not a swap to the alt screen.
+	if _, err := term.Write([]byte("\033[?1049l")); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	if term.(*terminal).mode&ModeAltScreen != 0 {
+		t.Fatal("redundant alt screen reset swapped to the alt screen")
+	}
+
+	if s := extractStr(term, 0, 1, 0); s != "l0" {
+		t.Errorf("expected screen row 0 to be l0, got %q", s)
+	}
+
+	// Capture keeps working afterward.
+	writeLines(t, term, "", "l1", "l2", "l3")
+	assertScrollback(t, term, []string{"l0"}, 0)
+}
+
 func TestScrollbackShrinkResizeOnAltScreenCapturesPrimary(t *testing.T) {
 	term := New(WithSize(10, 5), WithScrollbackCapture(10))
 
@@ -311,6 +334,19 @@ func TestCaptureScrollbackPastBufferEnd(t *testing.T) {
 
 	if s.scrollbackDropped != 0 {
 		t.Errorf("expected 0 dropped, got %d", s.scrollbackDropped)
+	}
+
+	// Same when the limit is hit mid-capture: only the rows that exist count as dropped.
+	s.scrollback, s.scrollbackDropped = nil, 0
+	s.scrollbackLimit = 1
+	s.captureScrollback(s.lines, 5)
+
+	if len(s.scrollback) != 1 {
+		t.Fatalf("expected 1 captured line, got %d", len(s.scrollback))
+	}
+
+	if s.scrollbackDropped != 2 {
+		t.Errorf("expected 2 dropped, got %d", s.scrollbackDropped)
 	}
 }
 
