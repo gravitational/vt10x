@@ -16,6 +16,7 @@ type terminal struct {
 
 func newTerminal(info TerminalInfo) *terminal {
 	t := &terminal{newState(info.w)}
+	t.scrollbackLimit = info.scrollbackLimit
 	t.init(info.cols, info.rows)
 	return t
 }

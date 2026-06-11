@@ -140,6 +140,58 @@ type State struct {
 	tabs          []bool
 	title         string
 	colorOverride map[Color]Color
+
+	// scrollbackLimit, when > 0, enables capturing lines as they scroll off the top into scrollback (capped at
+	// scrollbackLimit, with any excess counted in scrollbackDropped). Drained via TakeScrollback.
+	scrollbackLimit   int
+	scrollback        [][]rune
+	scrollbackDropped int
+}
+
+// TakeScrollback returns the text of lines that have scrolled off the top since the last call and the number of
+// additional scrolled-off lines dropped because scrollbackLimit was reached, then resets both. Only primary-screen
+// lines that scroll off the top row of the screen are recorded: alternate-screen scrolls, deleted lines (DL), and
+// scrolls of a region that does not start at the top row are not. Capture is enabled with WithScrollbackCapture;
+// without it this always returns (nil, 0).
+func (t *State) TakeScrollback() (lines [][]rune, dropped int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	lines, dropped = t.scrollback, t.scrollbackDropped
+	t.scrollback, t.scrollbackDropped = nil, 0
+
+	return lines, dropped
+}
+
+// captureScrollback records the text of the first n rows of the given screen buffer before they are scrolled off
+// the top. Lines beyond scrollbackLimit are counted as dropped rather than retained, bounding memory under
+// unbounded scroll.
+func (t *State) captureScrollback(lines []line, n int) {
+	if t.scrollbackLimit <= 0 {
+		return
+	}
+
+	for y := 0; y < n && y < len(lines); y++ {
+		if len(t.scrollback) >= t.scrollbackLimit {
+			t.scrollbackDropped += n - y
+			return
+		}
+
+		row := lines[y]
+		runes := make([]rune, len(row))
+		for x := range row {
+			runes[x] = row[x].Char
+		}
+		t.scrollback = append(t.scrollback, runes)
+	}
+}
+
+// primaryLines returns the primary-screen buffer, which lives in altLines while the alternate screen is active.
+func (t *State) primaryLines() []line {
+	if t.mode&ModeAltScreen != 0 {
+		return t.altLines
+	}
+	return t.lines
 }
 
 func newState(w io.Writer) *State {
@@ -285,7 +337,7 @@ func (t *State) newline(firstCol bool) {
 	if y == t.bottom {
 		cur := t.cur
 		t.cur = t.defaultCursor()
-		t.scrollUp(t.top, 1)
+		t.scrollUp(t.top, 1, true)
 		t.cur = cur
 	} else {
 		y++
@@ -369,6 +421,10 @@ func (t *State) resize(cols, rows int) bool {
 	}
 	slide := t.cur.Y - rows + 1
 	if slide > 0 {
+		// Shrinking with the cursor low slides both buffers up, discarding the top `slide` rows the same way a
+		// scroll does; capture the primary screen's rows (even if the alternate screen is active) so history is
+		// not silently lost.
+		t.captureScrollback(t.primaryLines(), slide)
 		copy(t.lines, t.lines[slide:slide+rows])
 		copy(t.altLines, t.altLines[slide:slide+rows])
 	}
@@ -557,13 +613,18 @@ func (t *State) scrollDown(orig, n int) {
 	// TODO: selection scroll
 }
 
-func (t *State) scrollUp(orig, n int) {
+func (t *State) scrollUp(orig, n int, capture bool) {
 	if t.rows <= 0 || t.cols <= 0 || len(t.lines) == 0 || len(t.dirty) == 0 || n <= 0 {
 		return
 	}
 	n = clamp(n, 0, t.bottom-orig+1)
 	if n == 0 {
 		return
+	}
+	// Scrollback only records primary-screen lines that scroll off the top row of the screen; interior region
+	// scrolls (orig > 0) and alternate-screen scrolls discard content that is not primary-screen history.
+	if capture && orig == 0 && t.mode&ModeAltScreen == 0 {
+		t.captureScrollback(t.lines, n)
 	}
 	t.clear(0, orig, t.cols-1, orig+n-1)
 	t.changed |= ChangedScreen
@@ -812,7 +873,7 @@ func (t *State) deleteLines(n int) {
 	if t.cur.Y < t.top || t.cur.Y > t.bottom {
 		return
 	}
-	t.scrollUp(t.cur.Y, n)
+	t.scrollUp(t.cur.Y, n, false)
 }
 
 func (t *State) deleteChars(n int) {
