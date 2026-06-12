@@ -1,6 +1,7 @@
 package vt10x
 
 import (
+	"math/rand"
 	"testing"
 )
 
@@ -299,5 +300,71 @@ func TestDumpStateEmptyTerminal(t *testing.T) {
 	}
 	if len(state.AlternateBuffer) != 0 {
 		t.Errorf("expected empty alternate buffer, got %d rows", len(state.AlternateBuffer))
+	}
+}
+
+func generateSrc(t *State) []line {
+	src := make([]line, t.rows)
+	for y := 0; y < t.rows; y++ {
+		src[y] = make([]Glyph, t.cols)
+		for x := 0; x < t.cols; x++ {
+			src[y][x] = Glyph{Char: rune(rand.Intn(128))}
+		}
+	}
+	return src
+}
+
+func BenchmarkCopyBufferOriginal(b *testing.B) {
+	t := State{
+		rows: 270,
+		cols: 62,
+	}
+
+	src := generateSrc(&t)
+	copyBuffer := func(src []line) [][]Glyph {
+		buf := make([][]Glyph, t.rows)
+		for y := 0; y < t.rows; y++ {
+			buf[y] = make([]Glyph, t.cols)
+			for x := 0; x < t.cols; x++ {
+				if y < len(src) && x < len(src[y]) {
+					buf[y][x] = src[y][x]
+				}
+			}
+		}
+		return buf
+	}
+
+	b.ResetTimer()
+	for b.Loop() {
+		_ = copyBuffer(src)
+	}
+}
+
+func BenchmarkCopyBufferFlat(b *testing.B) {
+	t := State{
+		rows: 270,
+		cols: 62,
+	}
+
+	src := generateSrc(&t)
+
+	copyBuffer := func(src []line) [][]Glyph {
+		buf := make([][]Glyph, t.rows)
+		flat := make([]Glyph, t.rows*t.cols)
+
+		for y := 0; y < t.rows; y++ {
+			row := flat[y*t.cols : (y+1)*t.cols]
+			buf[y] = row
+			if y < len(src) {
+				copy(row, src[y])
+			}
+		}
+
+		return buf
+	}
+
+	b.ResetTimer()
+	for b.Loop() {
+		_ = copyBuffer(src)
 	}
 }
